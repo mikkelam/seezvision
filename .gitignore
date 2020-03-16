@@ -1,1 +1,9 @@
 data/
+.idea/
+.ipynb_checkpoints
+logs/
+data/
+__pycache__
+.DS_Store
+cars.csv
+image_paths.pickle
