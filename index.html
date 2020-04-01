@@ -150,8 +150,8 @@
     }
 
     async function run() {
+        getModel();
         await setVideo();
-        await getModel();
         while (true) {
             await insertPreds()
         }
