@@ -59,7 +59,7 @@
         try {
             model = await tf.loadGraphModel('indexeddb://model')
         } catch (err) {
-            model = await tf.loadGraphModel('http://127.0.0.1:8080/model/model.json');
+            model = await tf.loadGraphModel('https://mikkelam.github.io/seezvision/model/model.json');
             await model.save('indexeddb://model');
         }
         return model
