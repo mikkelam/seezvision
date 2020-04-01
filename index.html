@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="labels.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.0/dist/tf.min.js"></script>
+    <title>Car recognizer</title>
+</head>
+<body>
+<div>
+    <video autoplay width="600" height="600"></video>
+    <H3>Prediction</H3>
+    <ul>
+        <li>Coffee</li>
+        <li>Tea</li>
+        <li>Milk</li>
+        <li>Blood</li>
+        <li>Coronavirus</li>
+    </ul>
+    <form>
+        <input type="radio" name="camera" id="environment" value="environment" checked>
+        <label for="environment">Back facing camera</label><br>
+        <input type="radio" name="camera" id="user" value="user">
+        <label for="user">front facing camera</label><br>
+    </form>
+</div>
+</body>
+
+<script>
+    const video = document.querySelector("video");
+
+    async function setVideo() {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+                height: 600,
+                width: 600,
+                facingMode: 'user',
+            }
+        });
+        video.width = 600;
+        video.height = 600;
+
+        video.srcObject = mediaStream;
+        let ready= await new Promise((resolve, reject) => {
+            video.onloadedmetadata = () => resolve(video);
+        });
+        ready.play();
+    }
+
+
+
+    let model;
+
+    async function getModel() {
+        if (model) {
+            return model
+        }
+        try {
+            model = await tf.loadGraphModel('indexeddb://model')
+        } catch (err) {
+            model = await tf.loadGraphModel('http://127.0.0.1:8080/model/model.json');
+            await model.save('indexeddb://model');
+        }
+        return model
+    }
+
+    function getImage() {
+        if (!video.srcObject)
+            return;
+        const canvas = document.createElement("canvas");
+        canvas.getContext('2d')
+            .drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+
+        const image = new Image();
+        image.src = canvas.toDataURL();
+        return tf.browser.fromPixels(video);
+        // const cameraMode = document.querySelector('input[name="camera"]:checked').value.toString();
+        // const cam = await tf.data.webcam(video, {
+        //         'facingMode': cameraMode,
+        //         'resizeWidth': 223, 'resizeHeight': 223
+        //     }
+        // );
+        // const img = await cam.capture();
+        // return img
+    }
+
+    async function getTopKClasses(probs, topK) {
+        const values = await probs.data();
+
+        const valuesAndIndices = [];
+        for (let i = 0; i < values.length; i++) {
+            valuesAndIndices.push({value: values[i], index: i});
+        }
+        valuesAndIndices.sort((a, b) => {
+            return b.value - a.value;
+        });
+        const topkValues = new Float32Array(topK);
+        const topkIndices = new Int32Array(topK);
+        for (let i = 0; i < topK; i++) {
+            topkValues[i] = valuesAndIndices[i].value;
+            topkIndices[i] = valuesAndIndices[i].index;
+        }
+
+        const topClassesAndProbs = [];
+        for (let i = 0; i < topkIndices.length; i++) {
+            topClassesAndProbs.push({
+                className: labels[topkIndices[i]],
+                probability: topkValues[i]
+            })
+        }
+        return topClassesAndProbs;
+    }
+
+
+    async function inference() {
+        let model = await getModel();
+        const probs = tf.tidy(() => {
+            const image = getImage();
+            if (!image)
+                return;
+
+            const x = tf.image.resizeBilinear(image, [223, 223]).cast('float32')
+                .div(tf.scalar(255));
+
+            const num_pixel = tf.prod(x.shape);
+            // num_pixel.print()
+            const std = tf.sqrt(tf.mean(tf.abs(x.sub(x.mean())).square()));
+            // std.print();
+            let std_image = x.sub(x.mean()).div(tf.maximum(std, (tf.scalar(1).div(tf.sqrt(num_pixel)))));
+            // std_image.print()
+            std_image = std_image.reshape([1, 223, 223, 3]);
+            // std_image.print()
+            const logits = model.predict(std_image);
+            const probs = tf.softmax(logits);
+            return probs;
+        });
+
+        return await getTopKClasses(probs, 5);
+    }
+
+    async function insertPreds() {
+        const result = await inference();
+        const li = document.querySelectorAll('ul > li');
+        // return result;
+        for (let i = 0; i < result.length; i++) {
+            const pred = result[i]['className'] + ': ' + result[i]['probability'].toString();
+            li[i].innerHTML = pred;
+        }
+    }
+
+    async function run() {
+        await setVideo();
+        await getModel();
+        while (true) {
+            await insertPreds()
+        }
+    }
+run();
+</script>
+
+</html>
