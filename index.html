@@ -28,7 +28,7 @@
 
 <script>
     const video = document.querySelector("video");
-
+    tf.enableProdMode();
     async function setVideo() {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: false,
@@ -150,7 +150,7 @@
     }
 
     async function run() {
-        getModel();
+        await getModel();
         await setVideo();
         while (true) {
             await insertPreds()
