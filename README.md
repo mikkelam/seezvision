@@ -9,13 +9,13 @@ Given the known car images, we can join the labels of make/model/submodel on the
 
 It should be noted that many listings are garbage and will introduce heavy label noise, alas we should be able to work against this, NN are very resilient towards label noise.
 
-download_hetzner.py grabs the dataset over webdav. One needs a cars.csv file formatted:
+download_dataset.py grabs the dataset over webdav. One needs a cars.csv file formatted:
 ```csv
 ad_id, make, model, submodel, "image_id1, image_id2"
 ```
 Note that one car has many pics here..
 
-running download_hetzner.py  should download all images and save them into `project_dir/data/<ad_id>/<p_hash>.jpg`. This large directory will work on modern file systems and will even be trainable using pytorch/TF2 on SSDs.
+running download_dataset.py  should download all images and save them into `project_dir/data/<ad_id>/<p_hash>.jpg`. This large directory will work on modern file systems and will even be trainable using pytorch/TF2 on SSDs.
 
 However, it is incredibly wasteful using such  a format and scales better with tfrecords.
 
