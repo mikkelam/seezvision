@@ -8,7 +8,7 @@
 </head>
 <body>
 <div>
-    <video autoplay width="600" height="600"></video>
+    <video autoplay muted playsinline width="600" height="600"></video>
     <H3>Prediction</H3>
     <ul>
         <li>Coffee</li>
@@ -28,14 +28,14 @@
 
 <script>
     const video = document.querySelector("video");
-    tf.enableProdMode()
+    tf.enableProdMode();
     async function setVideo() {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
                 height: 600,
                 width: 600,
-                facingMode: 'user',
+                facingMode: 'environment',
             }
         });
         video.width = 600;
