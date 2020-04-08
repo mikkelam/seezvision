@@ -21,11 +21,13 @@ from tenacity import retry, wait_exponential
 logging.basicConfig(level=logging.DEBUG)
 
 data_dir = Path(__file__).parent / 'data'
-# data_dir = Path('/Volumes/shared/data')
-# data_dir = Path('/Users/mikkelam/data')
 data_dir.mkdir(exist_ok=True)
 
-base_url = 'https://u213553-sub6.your-storagebox.de'
+
+
+login = os.environ['DAW_LOGIN']
+password = os.environ['DAW_PASSWORD']
+base_url = os.environ['DAW_URL']
 
 
 class AsyncEnumerate:
@@ -117,10 +119,6 @@ async def download_multiple(session: aiohttp.ClientSession, rows):
     await asyncio.gather(*batch)  # last batch
 
     return
-
-
-login = os.environ['HETZNER_LOGIN']
-password = os.environ['HETZNER_PASSWORD']
 
 
 async def main():
