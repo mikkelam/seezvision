@@ -23,22 +23,27 @@ tf.random.set_seed = 31
 
 
 class Dataset:
-    data_dir = Path(__file__).parent / 'data'
-    record_dir = Path(__file__).parent / 'records'
-    IMAGE_SIZE = 223
+    project_dir = Path(__file__).parent.parent
+    data_dir = project_dir / 'data'
+    record_dir = project_dir / 'records'
+    path_cache = project_dir / 'image_paths.pickle'
+    labels = project_dir / 'labels.txt'
+    class_weight = project_dir / 'class_weights.pickle'
+    norm_weights = [np.array([0.4797589, 0.47081122, 0.45555392]), np.array([0.08123032, 0.07896693, 0.07895421])]
+    IMAGE_SIZE = 224
 
     @classmethod
     def get_image_paths(cls):
-       cache = Path(__file__).parent / 'image_paths.pickle'
-       if cache.exists():
-           return pickle.load(cache.open('rb'))
-       print('Finding all image paths')
-       image_paths = list(cls.data_dir.glob('*/*.jpg'))
-       ad_ids = [str(i.parent.name) for i in image_paths]
-       df = pd.DataFrame({'path': map(str, image_paths), 'ad_id': ad_ids})
-       pickle.dump(df, cache.open('wb'))
+        if cls.path_cache.exists():
+            return pickle.load(cls.path_cache.open('rb'))
+        print('Finding all image paths')
+        image_paths = list(cls.data_dir.glob('*/*.jpg'))
+        ad_ids = [str(i.parent.name) for i in image_paths]
+        df = pd.DataFrame({'path': map(str, image_paths), 'ad_id': ad_ids})
+        pickle.dump(df, cls.path_cache.open('wb'))
 
-       return df
+        return df
+
     @classmethod
     def find_corrupt_images(cls, delete=False):
         from PIL import Image
@@ -58,7 +63,6 @@ class Dataset:
         tasks = tqdm(image_df.path.tolist())
         results = Parallel(n_jobs=7)(delayed(check_image)(img) for img in tasks)
 
-
     @classmethod
     def write(cls, samples_per_class=3500, sample_class_cutoff=50):
         def write_shard(df: pd.DataFrame, shard_path: Path):
@@ -73,7 +77,6 @@ class Dataset:
                         example = tf.train.Example(features=tf.train.Features(feature=feature))
                         writer.write(example.SerializeToString())
 
-
         image_df = cls.get_image_paths()
         labelset = cls.make_labelset()
 
@@ -85,13 +88,11 @@ class Dataset:
 
         label_encoder = LabelEncoder()
         df['label'] = label_encoder.fit_transform(df.label.values)
-        pickle.dump(label_encoder, open('label_encoder.pickle', 'wb'))
-        Path('labels.txt').write_text("\n".join(label_encoder.classes_))
+        cls.labels.write_text("\n".join(label_encoder.classes_))
         class_weights = dict(enumerate(compute_class_weight('balanced',
-                                             np.unique(df.label),
-                                             df.label)))
-        pickle.dump(class_weights,open('class_weights.pickle', 'wb'))
-        exit()
+                                                            np.unique(df.label),
+                                                            df.label)))
+        pickle.dump(cls.class_weight.open('rb'))
         train, val = train_test_split(df, test_size=0.15)
         tasks = []
         for key, df in {'train': train, "val": val}.items():
@@ -126,11 +127,10 @@ class Dataset:
         df.drop(['make', 'model', 'submodel'], axis=1, inplace=True)
         return df
 
-
     @classmethod
     def read(cls, batch_size):
-        le = pickle.load(open('label_encoder.pickle', 'rb'))
-        class_weight = pickle.load(open('class_weights.pickle','rb'))
+        labels = cls.labels.read_text()
+        class_weight = pickle.load(cls.class_weight.open('rb'))
         N_CLASSES = len(class_weight.keys())
 
         train = list(map(str, cls.record_dir.glob('train*.tfrecord')))
@@ -151,80 +151,45 @@ class Dataset:
             example = tf.io.parse_single_example(example, image_feature_description)
             label = example['label']
             img = example['image']
-            img = tf.image.decode_jpeg(img)
+            img = tf.io.decode_jpeg(img)
             img = (tf.cast(img, tf.float32) / 255)
-            # img = tf.image.random_crop(img, size=(cls.IMAGE_SIZE, cls.IMAGE_SIZE, 3))
-            img = tf.image.resize(img, (cls.IMAGE_SIZE, cls.IMAGE_SIZE))
-            img = tf.image.per_image_standardization(img)
-            if train:
-                img = tf.image.random_brightness(img, 0.2)
-                img = tf.image.random_flip_left_right(img)
-                img = tf.image.random_flip_up_down(img)
+            img = tf.image.resize_with_crop_or_pad(img, cls.IMAGE_SIZE, cls.IMAGE_SIZE)
+
+            # img = tf.image.resize(img, (cls.IMAGE_SIZE, cls.IMAGE_SIZE))
+            # if train:
+            #     img = tf.image.random_brightness(img, 0.2)
+            #     img = tf.image.random_flip_left_right(img)
+            #     img = tf.image.random_flip_up_down(img)
 
             label = one_hot(label, N_CLASSES)
             return img, label
 
-
         ds_val = ds_val.map(lambda x: parse(x, train=False), num_parallel_calls=AUTOTUNE)
-        ds_train = ds_train.map(parse,  num_parallel_calls=AUTOTUNE)
+        ds_train = ds_train.map(parse, num_parallel_calls=AUTOTUNE)
 
         ds_train = ds_train.batch(batch_size).prefetch(AUTOTUNE)
         ds_val = ds_val.batch(batch_size).prefetch(AUTOTUNE)
 
+        return ds_train, ds_val, class_weight, labels, cls.IMAGE_SIZE, N_CLASSES
 
-
-        return ds_train, ds_val, class_weight, le, cls.IMAGE_SIZE, N_CLASSES
-
-
-
-
-def dataset():
-    IMAGE_SIZE = 224
-
-    datagen = ImageDataGenerator(rescale=1. / 255., validation_split=0.15, samplewise_center=True,
-                                 samplewise_std_normalization=True, horizontal_flip=True, vertical_flip=True,
-                                 rotation_range=45)
-    params = {'dataframe': df, 'x_col': 'path', 'y_col': 'label', 'target_size': (IMAGE_SIZE, IMAGE_SIZE),
-              'class_mode': 'categorical', 'batch_size': BATCH_SIZE, 'shuffle': True, 'seed': 42}
-
-    train_gen = datagen.flow_from_dataframe(**params, subset='training')
-    val_gen = datagen.flow_from_dataframe(**params, subset='validation')
-
-    # Grab our output shapes and dtype
-    # images, labels = next(train_gen)
-    # print(images.dtype, images.shape) # float32 (64, 256, 256, 3)
-    # print(labels.dtype, labels.shape) # float32 (64, 927)
-    output_types = (tf.float32, tf.float32)
-    output_shapes = ([None, IMAGE_SIZE, IMAGE_SIZE, 3], [None, N_CLASSES])
-
-    ds_train = tf.data.Dataset.from_generator(
-        lambda: train_gen,  # stupid tf wants a callable, here u go idiots
-        output_types=output_types,
-        output_shapes=output_shapes,
-    )
-
-    ds_val = tf.data.Dataset.from_generator(
-        lambda: val_gen,  # stupid tf wants a callable, here u go idiots
-        output_types=output_types,
-        output_shapes=output_shapes,
-    )
-
-    train_steps = len(train_gen) // BATCH_SIZE
-    val_steps = len(val_gen) // BATCH_SIZE
-
-    class_weights = compute_class_weight('balanced',
-                                         np.unique(train_gen.classes),
-                                         train_gen.classes)
-
-    print(
-        f'Loaded dataset with {df.shape[0]} samples, {N_CLASSES} classes and train steps:{train_steps}, val steps:{val_steps} in batches of {BATCH_SIZE}  ')
-    return ds_train, ds_val, train_steps, val_steps, class_weights, N_CLASSES, BATCH_SIZE, IMAGE_SIZE
-
-
+    @classmethod
+    def normalize_layer(cls, input_shape) -> tf.keras.layers.experimental.preprocessing.Normalization:
+        n = tf.keras.layers.experimental.preprocessing.Normalization(axis=-1, input_shape=input_shape)
+        if cls.norm_weights:
+            n.build(input_shape)
+            n.set_weights(cls.norm_weights)
+            return n
+        ds_train, _, _, _, _, _ = cls.read(batch_size=22)
+        images = ds_train.map(lambda img, label: img)
+        n = tf.keras.layers.experimental.preprocessing.Normalization(axis=-1)
+        n.adapt(images)
+        print(n.get_weights())
+        return n
 
 
 if __name__ == '__main__':
-    Dataset.write(samples_per_class=1500)
+    # Dataset.write(samples_per_class=1500)
+    Dataset.normalize_layer()
     # print(next(Dataset.read(24)[0].take(1).as_numpy_iterator()))
     # dataset2()
     # find_corrupt_images()
