@@ -7,7 +7,7 @@ from src.dataset import Dataset
 
 
 def create_model(input_shape, output_shape) -> tf.keras.Model:
-    model = efn.EfficientNetB3(input_shape=input_shape, weights='noisy-student', include_top=False)
+    model = efn.EfficientNetB2(input_shape=input_shape, weights='noisy-student', include_top=False)
     model = tf.keras.Sequential([
         Dataset.normalize_layer(input_shape),
         tf.keras.layers.experimental.preprocessing.RandomFlip(),

@@ -153,8 +153,8 @@ class Dataset:
             img = example['image']
             img = tf.io.decode_jpeg(img)
             img = (tf.cast(img, tf.float32) / 255)
-            img = tf.image.resize_with_crop_or_pad(img, cls.IMAGE_SIZE, cls.IMAGE_SIZE)
-
+            # img = tf.image.resize_with_crop_or_pad(img, cls.IMAGE_SIZE, cls.IMAGE_SIZE)
+            img = tf.image.resize_with_pad(img, cls.IMAGE_SIZE, cls.IMAGE_SIZE, antialias=False)
             # img = tf.image.resize(img, (cls.IMAGE_SIZE, cls.IMAGE_SIZE))
             # if train:
             #     img = tf.image.random_brightness(img, 0.2)
@@ -170,7 +170,7 @@ class Dataset:
         ds_train = ds_train.batch(batch_size).prefetch(AUTOTUNE)
         ds_val = ds_val.batch(batch_size).prefetch(AUTOTUNE)
 
-        return ds_train, ds_val, class_weight, labels, cls.IMAGE_SIZE, N_CLASSES
+        return ds_train, ds_val,  class_weight, labels, cls.IMAGE_SIZE, N_CLASSES
 
     @classmethod
     def normalize_layer(cls, input_shape) -> tf.keras.layers.experimental.preprocessing.Normalization:
